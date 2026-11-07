@@ -2106,6 +2106,24 @@ fn test_boolean_key() {
 }
 
 #[test]
+fn test_invalid_boolean_key() {
+    test_parse_err::<BTreeMap<bool, i32>>(&[
+        (
+            r#"{"éx":1}"#,
+            "invalid type: string \"éx\", expected a boolean at line 1 column 6",
+        ),
+        (
+            r#"{"yes":1}"#,
+            "invalid type: string \"yes\", expected a boolean at line 1 column 6",
+        ),
+        (
+            r#"{"":1}"#,
+            "invalid type: string \"\", expected a boolean at line 1 column 3",
+        ),
+    ]);
+}
+
+#[test]
 fn test_borrowed_key() {
     let map: BTreeMap<&str, ()> = from_str("{\"borrowed\":null}").unwrap();
     let expected = treemap! { "borrowed" => () };
