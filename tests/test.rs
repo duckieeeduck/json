@@ -2107,7 +2107,7 @@ fn test_boolean_key() {
 
 #[test]
 fn test_invalid_boolean_key() {
-    test_parse_err::<BTreeMap<bool, i32>>(&[
+    for (j, expected) in [
         (
             r#"{"éx":1}"#,
             "invalid type: string \"éx\", expected a boolean at line 1 column 6",
@@ -2120,7 +2120,22 @@ fn test_invalid_boolean_key() {
             r#"{"":1}"#,
             "invalid type: string \"\", expected a boolean at line 1 column 3",
         ),
-    ]);
+    ] {
+        for err in [
+            from_str::<BTreeMap<bool, i32>>(j).unwrap_err(),
+            from_slice::<BTreeMap<bool, i32>>(j.as_bytes()).unwrap_err(),
+        ] {
+            // Compare bytes: a message that is not valid UTF-8 would panic
+            // while being printed as a str, aborting the whole test binary.
+            let actual = err.to_string();
+            assert_eq!(
+                actual.as_bytes(),
+                expected.as_bytes(),
+                "{}",
+                String::from_utf8_lossy(actual.as_bytes()),
+            );
+        }
+    }
 }
 
 #[test]
