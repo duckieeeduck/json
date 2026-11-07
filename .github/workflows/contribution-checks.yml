@@ -1,0 +1,129 @@
+name: Contribution checks
+# Fork-only. Mirrors upstream ci.yml test, clippy and miri jobs on Linux,
+# plus rustfmt. Every step runs even after an earlier failure, and cargo test
+# uses --no-fail-fast, so one run shows every failing test.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Contribution branch or commit to check
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  test:
+    name: Test (nightly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: nightly
+      - name: Show commit
+        run: git rev-parse HEAD
+      - name: Regression test
+        if: ${{ !cancelled() }}
+        run: cargo test --test test test_invalid_boolean_key -- --exact
+      - name: cargo test
+        if: ${{ !cancelled() }}
+        run: cargo test --no-fail-fast
+      - name: cargo test preserve_order
+        if: ${{ !cancelled() }}
+        run: cargo test --no-fail-fast --features preserve_order --tests -- --skip ui --exact
+      - name: cargo test float_roundtrip
+        if: ${{ !cancelled() }}
+        run: cargo test --no-fail-fast --features float_roundtrip --tests -- --skip ui --exact
+      - name: cargo test arbitrary_precision
+        if: ${{ !cancelled() }}
+        run: cargo test --no-fail-fast --features arbitrary_precision --tests -- --skip ui --exact
+      - name: cargo test float_roundtrip,arbitrary_precision
+        if: ${{ !cancelled() }}
+        run: cargo test --no-fail-fast --features float_roundtrip,arbitrary_precision --tests -- --skip ui --exact
+      - name: cargo test raw_value
+        if: ${{ !cancelled() }}
+        run: cargo test --no-fail-fast --features raw_value --tests -- --skip ui --exact
+      - name: cargo test unbounded_depth
+        if: ${{ !cancelled() }}
+        run: cargo test --no-fail-fast --features unbounded_depth --tests -- --skip ui --exact
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: nightly
+          components: clippy
+      - name: clippy
+        if: ${{ !cancelled() }}
+        run: cargo clippy --tests -- -Dclippy::all -Dclippy::pedantic
+      - name: clippy all-features
+        if: ${{ !cancelled() }}
+        run: cargo clippy --all-features --tests -- -Dclippy::all -Dclippy::pedantic
+
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: stable
+          components: rustfmt
+      - name: rustfmt check
+        run: cargo fmt --all -- --check
+
+  miri:
+    name: Miri (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: 64-bit little endian
+            target: x86_64-unknown-linux-gnu
+          - name: 64-bit big endian
+            target: powerpc64-unknown-linux-gnu
+          - name: 32-bit little endian
+            target: i686-unknown-linux-gnu
+          - name: 32-bit big endian
+            target: mips-unknown-linux-gnu
+    env:
+      MIRIFLAGS: -Zmiri-strict-provenance
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: nightly
+          components: miri, rust-src
+      - name: miri setup
+        run: cargo miri setup
+      - name: miri test
+        if: ${{ !cancelled() }}
+        run: cargo miri test --no-fail-fast --target ${{ matrix.target }}
+      - name: miri test all features
+        if: ${{ !cancelled() }}
+        run: cargo miri test --no-fail-fast --target ${{ matrix.target }} --features preserve_order,float_roundtrip,arbitrary_precision,raw_value
